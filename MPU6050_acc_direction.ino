@@ -44,6 +44,8 @@ THE SOFTWARE.
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
+#include "HMC5883L.h"
+
 #include <SoftwareSerial.h>  // 使用arduino內建(軟體序列埠)程式庫
 SoftwareSerial BT4(4, 5);    // 設定軟體序列埠(接收腳,傳送腳)
 char input;                  // 接收序列埠值的變數input資料型態為字元
@@ -146,10 +148,11 @@ uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\
 
 int16_t ax, ay, az ;
 int16_t gx, gy, gz;
-double mx ,mxx ;
+int16_t mx, my, mz;
+
 float gyroSensitive = 65.5;
-const double offset_x = 1.63;
-const double offset_y=0.84;
+const double offset_x = 0.1;
+const double offset_y=1;
 
 float sumGx=0;
 double timer;
@@ -158,6 +161,8 @@ int connectedandTestingQ = 0;
 
 long previousMillis = 0;        // will store last time LED was updated
 String ACC_mx="";
+HMC5883L mag;
+
  
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
@@ -210,6 +215,15 @@ void setup() {
 
     // wait for ready
     Serial.println(F("\nSend any character to begin DMP programming and demo: "));
+    
+    
+      mag.initialize();
+
+    // verify connection
+    Serial.println("Testing device connections...");
+    Serial.println(mag.testConnection() ? "HMC5883L connection successful" : "HMC5883L connection failed");
+
+    
 //    while (Serial.available() && Serial.read()); // empty buffer
 //    while (!Serial.available());                 // wait for data
 //    while (Serial.available() && Serial.read()); // empty buffer again
@@ -341,23 +355,13 @@ void loop() {
 
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
-            delay(100);
+            //delay(100);
             mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
             Serial.print(millis());
             
-            if(((ax/16384.00) -offset_x) < -0.1 || ((ax/16384.00) -offset_x) > 0.1){    //有時候偏移量會不一樣   
-              mx = mx + (ax/16384.00);
-            }
-            
-            if(mx == mxx ){
-              
-              mx = 0.0;
-            }
+
             
             
-            mxx = mx;
-            Serial.print(mx);
-            Serial.print("/t");
             Serial.print("gx :");
             Serial.print((ax/16384.00-offset_x));
             Serial.print("\t");
@@ -370,16 +374,28 @@ void loop() {
            
             //傳送加速度與速度到pi上面(之後會增加指南針) 
             char BSV[100] = {'\0'};
-            String stringmx =  String((mx));     
+            String stringmx =  "QQ";     
             String stringax =  String((ax/16384.00-offset_x));
             String stringay =  String((ay/16384.00 - offset_y));
             String stringaz =  String((az/16384.00));
-            ACC_mx="A"+stringmx+"@"+stringax+":"+stringay+":"+stringaz;
-                        Serial.print(ACC_mx);
+
                                                 Serial.print("\t");
+            mag.getHeading(&mx, &my, &mz);
+            // To calculate heading in degrees. 0 degree indicates North
+            float heading = atan2(my, mx);
+            if(heading < 0)
+               heading += 2 * M_PI;
+           Serial.print("heading:\t");
+           Serial.print(heading * 180/M_PI);
+           String stringheading=String(heading*(180/M_PI));
+                       ACC_mx="A"+stringheading+"@"+stringax+":"+stringay+":"+stringaz;
+                        Serial.print(ACC_mx);
 
             ACC_mx.toCharArray(BSV,100);
             BT4.write(BSV);
+            
+            
+
     
             
             
